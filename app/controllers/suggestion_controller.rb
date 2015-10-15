@@ -98,6 +98,16 @@ class SuggestionController < ApplicationController
     end
   end
 
+  def create_new_team
+    new_team = AssignmentTeam.create(name: 'Team' + @user_id.to_s + '_' + rand(1000).to_s, parent_id: @signuptopic.assignment_id, type: 'AssignmentTeam')
+    t_user = TeamsUser.create(team_id: new_team.id, user_id: @user_id)
+    SignedUpTeam.create(topic_id: @signuptopic.id, team_id: new_team.id, is_waitlisted: 0)
+    parent = TeamNode.create(:parent_id => @signuptopic.assignment_id, :node_object_id => new_team.id)
+    TeamUserNode.create(:parent_id => parent.id, :node_object_id => t_user.id)
+  end
+
+  def
+
   def approve_suggestion
     @suggestion = Suggestion.find(params[:id])
     @user_id = @suggestion.unityID.to_i
@@ -129,11 +139,7 @@ class SuggestionController < ApplicationController
     if @suggestion.signup_preference == 'Y' 
       #if this user do not have team in this assignment, create one for him/her and assign this topic to this team.
       if @team_id.nil?
-        new_team = AssignmentTeam.create(name: 'Team' + @user_id.to_s + '_' + rand(1000).to_s, parent_id: @signuptopic.assignment_id, type: 'AssignmentTeam')
-        t_user = TeamsUser.create(team_id: new_team.id, user_id: @user_id)
-        SignedUpTeam.create(topic_id: @signuptopic.id, team_id: new_team.id, is_waitlisted: 0)
-        parent = TeamNode.create(:parent_id => @signuptopic.assignment_id, :node_object_id => new_team.id)
-        TeamUserNode.create(:parent_id => parent.id, :node_object_id => t_user.id)
+        create_new_team();
       else #this user has a team in this assignment, check whether this team has topic or not
         if @topic_id.nil?
           #clean waitlists
