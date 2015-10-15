@@ -19,7 +19,7 @@ class SuggestionController < ApplicationController
   end
 
   def add_comment
-    @suggestioncomment = SuggestionComment.new(params[:suggestion_comment])
+    @suggestioncomment = SuggestionComment.new(:vote => params[:suggestion_comment][:vote], :comments => params[:suggestion_comment][:comments])
     @suggestioncomment.suggestion_id=params[:id]
     @suggestioncomment.commenter= session[:user].name
     if  @suggestioncomment.save
@@ -63,25 +63,26 @@ class SuggestionController < ApplicationController
   def new
     @suggestion = Suggestion.new
     session[:assignment_id] = params[:id]
-    @suggestions = Suggestion.where(unityID: session[:user].id)
+    @suggestions = Suggestion.where(unityID: session[:user].name, assignment_id: params[:id])
     @assignment = Assignment.find(params[:id])
   end
 
   def create
-    @suggestion = Suggestion.new(params[:suggestion])
+    @suggestion = Suggestion.new(suggestion_params)
     @suggestion.assignment_id = session[:assignment_id]
+    @assignment = Assignment.find(session[:assignment_id])
     @suggestion.status = 'Initiated'
     if params[:suggestion_anonymous].nil?
-      @suggestion.unityID = session[:user].id
+      @suggestion.unityID = session[:user].name
     else
       @suggestion.unityID = "";
     end
 
     if @suggestion.save
-      render :action => 'confirm_save'
-    else
-      render :action => 'new'
+      flash[:success] = 'Thank you for your suggestion!' if @suggestion.unityID != ''
+      flash[:success] = 'You have already submit an anonymous suggestion. It will not show in the suggested topic table below.' if @suggestion.unityID == ''
     end
+    redirect_to :action => 'new', :id => @suggestion.assignment_id
   end
 
   def confirm_save
@@ -98,7 +99,34 @@ class SuggestionController < ApplicationController
     end
   end
 
-  def approve_suggestion
+  def create_new_team
+    new_team = AssignmentTeam.create(name: 'Team' + @user_id.to_s + '_' + rand(1000).to_s, parent_id: @signuptopic.assignment_id, type: 'AssignmentTeam')
+    t_user = TeamsUser.create(team_id: new_team.id, user_id: @user_id)
+    SignedUpTeam.create(topic_id: @signuptopic.id, team_id: new_team.id, is_waitlisted: 0)
+    parent = TeamNode.create(:parent_id => @signuptopic.assignment_id, :node_object_id => new_team.id)
+    TeamUserNode.create(:parent_id => parent.id, :node_object_id => t_user.id)
+  end
+
+  def send_email
+    proposer = User.find(@user_id)
+    teams_users = TeamsUser.where(team_id: @team_id)
+    cc_mail_list = Array.new
+    teams_users.each do |teams_user|
+      cc_mail_list << User.find(teams_user.user_id).email if teams_user.user_id != proposer.id
+    end
+    Mailer.suggested_topic_approved_message(
+        { to: proposer.email,
+          cc: cc_mail_list,
+          subject: "Suggested topic '#{@suggestion.title}' has already been approved",
+          body: {
+              approved_topic_name: @suggestion.title,
+              proposer: proposer.name
+          }
+        }
+    ).deliver
+  end
+
+  def approve
     @suggestion = Suggestion.find(params[:id])
     @user_id = @suggestion.unityID.to_i
     @team_id = TeamsUser.team_id(@suggestion.assignment_id, @user_id)
@@ -113,9 +141,11 @@ class SuggestionController < ApplicationController
     else
       flash[:error] = 'Error when approving the suggestion.'
     end
+  end
 
+  def notification
     #--zhewei-----06/22/2015--------------------------------------------------------------------------------------
-    # If you want to create a new team with topic and team members on view, you have to 
+    # If you want to create a new team with topic and team members on view, you have to
     # 1. create new Team
     # 2. create new TeamsUser
     # 3. create new SignedUpTeam
@@ -126,14 +156,10 @@ class SuggestionController < ApplicationController
     #if proposer's signup_pref is yes, has a team, does not hold a topic yet --> assign topic
     #if proposer's signup_pref is yes, has a team and topic --> send email says that 'approved'
     #if proposer's signup_pref is no --> send email says that 'approved'
-    if @suggestion.signup_preference == 'Y' 
+    if @suggestion.signup_preference == 'Y'
       #if this user do not have team in this assignment, create one for him/her and assign this topic to this team.
       if @team_id.nil?
-        new_team = AssignmentTeam.create(name: 'Team' + @user_id.to_s + '_' + rand(1000).to_s, parent_id: @signuptopic.assignment_id, type: 'AssignmentTeam')
-        t_user = TeamsUser.create(team_id: new_team.id, user_id: @user_id)
-        SignedUpTeam.create(topic_id: @signuptopic.id, team_id: new_team.id, is_waitlisted: 0)
-        parent = TeamNode.create(:parent_id => @signuptopic.assignment_id, :node_object_id => new_team.id)
-        TeamUserNode.create(:parent_id => parent.id, :node_object_id => t_user.id)
+        create_new_team
       else #this user has a team in this assignment, check whether this team has topic or not
         if @topic_id.nil?
           #clean waitlists
@@ -143,43 +169,18 @@ class SuggestionController < ApplicationController
           @signuptopic.private_to = @user_id
           @signuptopic.save
           #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
-          proposer = User.find(@user_id)
-          teams_users = TeamsUser.where(team_id: @team_id)
-          cc_mail_list = Array.new
-          teams_users.each do |teams_user|
-            cc_mail_list << User.find(teams_user.user_id).email if teams_user.user_id != proposer.id
-          end
-          Mailer.suggested_topic_approved_message(
-          { to: proposer.email,
-            cc: cc_mail_list,
-            subject: "Suggested topic '#{@suggestion.title}' has already been approved",
-            body: {
-              approved_topic_name: @suggestion.title,
-              proposer: proposer.name
-            }
-          }
-          ).deliver
+          send_email
         end
       end
     else
       #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
-      proposer = User.find(@user_id)
-      teams_users = TeamsUser.where(team_id: @team_id)
-      cc_mail_list = Array.new
-      teams_users.each do |teams_user|
-        cc_mail_list << User.find(teams_user.user_id).email if teams_user.user_id != proposer.id
-      end
-      Mailer.suggested_topic_approved_message(
-      { to: proposer.email,
-        cc: cc_mail_list,
-        subject: "Suggested topic '#{@suggestion.title}' has already been approved",
-        body: {
-          approved_topic_name: @suggestion.title,
-          proposer: proposer.name
-        }
-      }
-      ).deliver
+      send_email
     end
+  end
+
+  def approve_suggestion
+    approve
+    notification
     redirect_to :action => 'show', :id => @suggestion
   end
 
@@ -192,5 +193,10 @@ class SuggestionController < ApplicationController
       flash[:error] = 'Error when rejecting the suggestion'
     end
     redirect_to :action => 'show', :id => @suggestion
+  end
+
+  private
+  def suggestion_params
+    params.require(:suggestion).permit(:assignment_id, :title, :description, :status, :unityID, :signup_preference)
   end
 end
