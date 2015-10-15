@@ -1,6 +1,6 @@
 <h1><%= @header %> <%= @title %> for <%= @map.assignment.name %></h1>
 
-<% if !@map.contributor.nil? %>
+<% if !@map.contributor.nil? && !@map.instance_of?(FeedbackResponseMap) %>
     <% if @map.assignment.team_assignment? %>
         <% team_member = TeamsUser.find_by_team_id(@map.contributor).user_id%>
         <% topic_id = SignedUpTeam.topic_id(@map.assignment.id, team_member) %>
@@ -43,6 +43,9 @@
             <%= question.complete(i, answer, @questionnaire.min_question_score, @questionnaire.max_question_score, @dropdown_or_scale) %>
        <% elsif question.instance_of? Scale %>
             <%= question.complete(i, answer, @questionnaire.min_question_score, @questionnaire.max_question_score) %>
+       <% elsif question.instance_of? UploadFile %>
+            <!--One form had better not in another form-->
+            <!--Zhewei: I move the Uploadfile question to the end of questionnaire. So multiple forms will not been overlapped.-->
        <% else %>
             <%= question.complete(i, answer) %>
        <% end %>
@@ -66,6 +69,20 @@
     <%= submit_tag "Save "+@title, :name => "save" %>
     <%= hidden_field_tag('return', @return) %>
 <% end %>
-
+<!--Check whether there is a UploadFile question.-->
+<%@questions.each do |question| %>
+    <% if question.instance_of? UploadFile %>
+        <%= label_tag 'UploadFile', '**Before submit you peer review files, you have to click "Save Review" button first!', style: "color:red;"%>
+        <!--params[:origin] means from where do the files upload-->
+        <!--If the files uploaded from submitted_work (students hand in assignment), params[:origin] will be nil-->
+        <!--If the files uploaded from peer review, params[:origin] will be 'review'-->
+        <% if params[:action] == 'new' %>
+            <% response_map_id = params[:id] %>
+        <% elsif params[:action] == 'edit' %>
+            <% response_map_id = Response.find(params[:id]).response_map.id %>
+        <% end %>
+        <%= render partial: 'submitted_content/submitted_files', locals: {participant: @participant, stage: @stage, origin: 'review', response_map_id: response_map_id} %>
+    <% end %>
+<% end %>
 <%= @map.show_feedback(@response) %>
 <a href="javascript:window.history.back()">Back</a>

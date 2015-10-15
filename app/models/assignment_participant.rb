@@ -328,12 +328,12 @@ class AssignmentParticipant < Participant
         quiz_responses << qmapping.response
       end
     end
-    scores[:quiz] = Hash.new
-    scores[:quiz][:assessments] = quiz_responses
-    scores[:quiz][:scores] = Answer.compute_quiz_scores(scores[:quiz][:assessments])
+    #scores[:quiz] = Hash.new
+    #scores[:quiz][:assessments] = quiz_responses
+    #scores[:quiz][:scores] = Answer.compute_quiz_scores(scores[:quiz][:assessments])
 
     scores[:total_score] = assignment.compute_total_score(scores)
-    scores[:total_score] += compute_quiz_scores(scores)
+    #scores[:total_score] += compute_quiz_scores(scores)
 
     # move lots of calculation from view(_participant.html.erb) to model
     if self.grade
@@ -501,7 +501,7 @@ class AssignmentParticipant < Participant
 
   # provide import functionality for Assignment Participants
   # if user does not exist, it will be created and added to this assignment
-  def self.import(row,session,id)
+  def self.import(row,row_header=nil,session,id)
     raise ArgumentError, "No user id has been specified." if row.length < 1
     user = User.find_by_name(row[0])
     if user == nil
@@ -510,7 +510,7 @@ class AssignmentParticipant < Participant
       user = ImportFileHelper::create_new_user(attributes,session)
     end
     raise ImportError, "The assignment with id \""+id.to_s+"\" was not found." if Assignment.find(id) == nil
-    if all({conditions: ['user_id=? && parent_id=?', user.id, id]}).size == 0
+    if !AssignmentParticipant.exists?(:user_id => user.id, :parent_id => id)
       new_part = AssignmentParticipant.create(:user_id => user.id, :parent_id => id)
       new_part.set_handle()
     end
@@ -582,6 +582,14 @@ class AssignmentParticipant < Participant
       self.assignment.path + "/"+ self.directory_num.to_s
     end
 
+    #zhewei: this is the file path for reviewer uploaded files during peer review
+    def review_file_path(response_map_id)
+        response_map = ResponseMap.find(response_map_id)
+        first_user_id = TeamsUser.where(team_id: response_map.reviewee_id).first.user_id
+        participant = Participant.where(parent_id: response_map.reviewed_object_id, user_id: first_user_id).first
+        self.assignment.path + "/"+ participant.directory_num.to_s + "_review" + "/" + response_map_id.to_s
+    end
+
     def update_resubmit_times
       new_submit = ResubmissionTime.new(:resubmitted_at => Time.now.to_s)
       self.resubmission_times << new_submit
@@ -589,17 +597,41 @@ class AssignmentParticipant < Participant
 
     def set_student_directory_num
       if self.directory_num.nil? || self.directory_num < 0
-        max_num = AssignmentParticipant.where(parent_id: self.parent_id).order('directory_num desc').first.directory_num
-        dir_num = max_num ? max_num + 1 : 0
-        self.update_attribute('directory_num',dir_num)
-        #ACS Get participants irrespective of the number of participants in the team
-        #removed check to see if it is a team assignment
-        self.team.participants.each do | member |
-          if member.directory_num == nil or member.directory_num < 0
+        #check all the users in this team, see if they have the direc tory_num in their participants table.
+        this_team_has_directory_num = false
+        team = self.team
+        if team.nil? # this participant does not have a team
+
+        else
+          teammate_participants = team.participants
+          teammate_participants.each do |teammate_participant|
+            if !teammate_participant.directory_num.nil?
+              directory_num_for_this_team = teammate_participant.directory_num
+              this_team_has_directory_num=true
+              self.team.participants.each do | member |
+                member.update_attribute('directory_num',directory_num_for_this_team)
+              end
+            end
+          end
+        end
+
+        ##only create a new directory num for this team if there is no directory num for this team
+        if !this_team_has_directory_num
+          max_num = AssignmentParticipant.where(parent_id: self.parent_id).order('directory_num desc').first.directory_num
+          dir_num = max_num ? max_num + 1 : 0
+          self.update_attribute('directory_num',dir_num)
+          #ACS Get participants irrespective of the number of participants in the team
+          #removed check to see if it is a team assignment
+          self.team.participants.each do | member |
             member.directory_num = self.directory_num
             member.save
           end
         end
+      end
+
+      # if current user has directory_num, update the directory num for all the teammates.
+      self.team.participants.each do | member |
+        member.update_attribute('directory_num',self.directory_num)
       end
     end
 

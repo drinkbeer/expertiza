@@ -183,10 +183,9 @@ class ResponseController < ApplicationController
       @myid = @response.id
       @map = @response.map
       @response.update_attribute('additional_comment', params[:review][:comments])
-
-      if @map.type="ReviewResponseMap" && @response.round
+      if @map.type=="ReviewResponseMap" && @response.round
         @questionnaire = @map.questionnaire(@response.round)
-      elsif @map.type="ReviewResponseMap"
+      elsif @map.type=="ReviewResponseMap"
         @questionnaire = @map.questionnaire(nil)
       else
         @questionnaire = @map.questionnaire
@@ -216,6 +215,7 @@ class ResponseController < ApplicationController
     @modified_object = @map.id
 
     get_content(true)
+    @stage = @assignment.get_current_stage(SignedUpTeam.topic_id(@participant.parent_id, @participant.user_id))
     render :action => 'response'
   end
 

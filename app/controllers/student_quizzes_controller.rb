@@ -49,8 +49,12 @@ class StudentQuizzesController < ApplicationController
         next
       end
       quiz_questionnaire = QuizQuestionnaire.where(instructor_id:reviewee_team.id).first
+
+      #if the reviewee team has created quiz
       if quiz_questionnaire
-        quizzes << quiz_questionnaire
+        if !quiz_questionnaire.taken_by? reviewer
+          quizzes << quiz_questionnaire
+        end
       end
     end
     quizzes
@@ -64,8 +68,8 @@ class StudentQuizzesController < ApplicationController
     questions.each do |question|
       score = 0
       correct_answers = QuizQuestionChoice.where(question_id: question.id, iscorrect: true)
-      ques_type = question.q_type
-      if ques_type.eql? 'MCC'
+      ques_type = question.type
+      if ques_type.eql? 'MultipleChoiceCheckbox'
         if params["#{question.id}"].nil?
           valid = false
         else
@@ -82,7 +86,7 @@ class StudentQuizzesController < ApplicationController
           else
             score = 0
           end
-          #for MCC, score =1 means the quiz taker have done this question correctly, not just make select this choice correctly.
+          #for MultipleChoiceCheckbox, score =1 means the quiz taker have done this question correctly, not just make select this choice correctly.
           params["#{question.id}"].each do |choice|
             new_score = Answer.new comments: choice, question_id: question.id, response_id: response.id, :answer => score
 
@@ -92,7 +96,7 @@ class StudentQuizzesController < ApplicationController
             scores.push(new_score)
           end
         end
-      else #TF and MCR
+      else #TrueFalse and MultipleChoiceRadio
         correct_answer = correct_answers.first
         if correct_answer.txt==params["#{question.id}"]
           score=1
@@ -100,7 +104,7 @@ class StudentQuizzesController < ApplicationController
           score=0
         end
         new_score = Answer.new :comments => params["#{question.id}"], :question_id => question.id, :response_id => response.id, :answer => score
-        if new_score.comments.empty? || new_score.comments.nil?
+        if new_score.nil? || new_score.comments.nil? || new_score.comments.empty?
           valid = false
         end
         scores.push(new_score)
@@ -112,25 +116,43 @@ class StudentQuizzesController < ApplicationController
       end
       redirect_to :controller => 'student_quizzes', :action => 'finished_quiz', :map_id => map.id
     else
+      response.destroy
       flash[:error] = "Please answer every question."
-      redirect_to :action => :take_quiz, :assignment_id => params[:assignment_id], :questionnaire_id => questionnaire.id
+      redirect_to :action => :take_quiz, :assignment_id => params[:assignment_id], :questionnaire_id => questionnaire.id, :map_id => map.id
     end
   end
 
   def record_response
     map = ResponseMap.find(params[:map_id])
-    response = Response.new
-    response.map_id = params[:map_id]
-    response.created_at = DateTime.current
-    response.updated_at = DateTime.current
-    response.save
+    # check if there is any response for this map_id. This is to prevent student take same quiz twice
+    if map.response.empty?
+      response = Response.new
+      response.map_id = params[:map_id]
+      response.created_at = DateTime.current
+      response.updated_at = DateTime.current
+      response.save
 
-    calculate_score map,response
+      calculate_score map,response
+    else
+      flash[:error] = "You have already taken this quiz, below are the records for your responses."
+      redirect_to :controller => 'student_quizzes', :action => 'finished_quiz', :map_id => map.id
+    end
 
   end
 
   def graded?(response, question)
     return (Answer.where(question_id: question.id, response_id:  response.id).first)
+  end
+
+  #This method is only for quiz questionnaires, it is called when instructors click "view quiz questions" on the pop-up panel.
+  def review_questions
+    @assignment_id = params[:id]
+    @quiz_questionnaires = Array.new
+    Team.where(parent_id: params[:id]).each do |quiz_creator|
+      Questionnaire.where(instructor_id: quiz_creator.id).each do |questionnaire|
+        @quiz_questionnaires.push questionnaire
+      end
+    end
   end
 
   private
@@ -144,4 +166,5 @@ class StudentQuizzesController < ApplicationController
       return true
     end
   end
+
 end

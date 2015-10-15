@@ -1,6 +1,6 @@
 source 'http://rubygems.org'
 
-gem 'rails'
+gem 'rails', '~> 4.2.1'
 
 ## Gems in Alphabetical Order
 
@@ -61,7 +61,7 @@ group :development do
   gem 'pry'
   gem 'pry-remote'
   gem 'pry-nav'
-  gem 'sqlite3-ruby', :require => 'sqlite3'
+  gem 'sqlite3-ruby'
   gem 'selenium-webdriver'
   gem 'quiet_assets'
 end

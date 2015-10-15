@@ -197,6 +197,7 @@ class AssignmentTeam < Team
       end
      
       def self.team(participant)
+        return nil if participant.nil?
         team = nil
         teams_users = TeamsUser.where(user_id: participant.user_id)
         return nil if !teams_users
@@ -248,6 +249,21 @@ class AssignmentTeam < Team
           old_team.destroy
         end
       end
+
+  #for an existing team, after a new_participant joins, update the directory_num for the new participant
+  def update_dirctory_num_for_new_member(new_participant)
+    dir_num = nil
+    participants.each do |participant|
+      if !participant.directory_num.nil?
+        dir_num = participant.directory_num
+        break
+      end
+    end
+    if !dir_num.nil?
+      new_participant.directory_num = dir_num
+      new_participant.save
+    end
+  end
 
       require './app/models/analytic/assignment_team_analytic'
       include AssignmentTeamAnalytic
