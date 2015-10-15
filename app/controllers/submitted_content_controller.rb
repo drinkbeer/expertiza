@@ -112,14 +112,14 @@ def submit_file
   if params[:current_folder]
     @current_folder.name = FileHelper::sanitize_folder(params[:current_folder][:name])
   end
-
-  curr_directory = participant.path.to_s + @current_folder.name
-
-
+  if params[:origin] == 'review'
+    curr_directory = participant.review_file_path(params[:response_map_id]).to_s + @current_folder.name
+  else
+    curr_directory = participant.path.to_s + @current_folder.name
+  end
   if !File.exists? curr_directory
     FileUtils.mkdir_p(curr_directory)
   end
-
   safe_filename = file.original_filename.gsub(/\\/,"/")
   safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
     full_filename =  curr_directory + File.split(safe_filename).last.gsub(" ",'_') #safe_filename #curr_directory +
@@ -131,9 +131,12 @@ def submit_file
 
   #send message to reviewers when submission has been updated
   participant.assignment.email(participant.id) rescue nil # If the user has no team: 1) there are no reviewers to notify; 2) calling email will throw an exception. So rescue and ignore it.
-
-  redirect_to :action => 'edit', :id => participant.id
+  if params[:origin] == 'review'
+    redirect_to :back
+  else
+    redirect_to :action => 'edit', :id => participant.id
   end
+end
 
 
 def folder_action

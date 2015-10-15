@@ -1,112 +1,89 @@
 <%= error_messages_for 'questionnaire' %>
-
-<table>
-  <tr>
-    <td valign="top"><label for="questionnaire_name">Name:</label>
-      <%= text_field 'questionnaire', 'name'  %>
-      <%= hidden_field 'questionnaire', 'id' %>
-      <%= hidden_field 'questionnaire', 'type' %>
-    </td>
-  </tr>
-</table>
-
-<% if @questionnaire.type == 'QuizQuestionnaire' %>        <!--handle a questionnaire differently if it is a quiz-->
-  <table id="questions_table">
-    <% if $disp_flag != 1 %>
-      <tr>
-        <td align=left width=300>1111Questions:</td>
-        <%  if @questionnaire.type != 'QuizQuestionnaire' %><td align=left>weight</td><%end%>
-
-      </tr>
-    <% end %>
-
-    <% for @question in @questionnaire.questions %>
-        <% questionnum=@question.id %>
-      <tr>
-        <% if $disp_flag != 1 %>
-          <td > <%= text_area "question[]", 'txt', :cols=>100 %></td>
-        <% end %>
-        <%  @quiz_question_choices = QuizQuestionChoice.where(question_id: @question.id) %>
-
-        <% @question_type= QuestionType.find_by_question_id(@question.id)%>
-      </tr>
-      <% i=1 %>
-
-      <% for @quiz_question_choice in @quiz_question_choices %>
-        <tr>
-        <td>
-          &nbsp;&nbsp;&nbsp;
-            <% if @question_type.q_type=="MCC" %>
-                <%= hidden_field_tag("quiz_question_choices[#{questionnum}][MCC][#{i}][iscorrect]",'0') %>
-                <%= check_box_tag("quiz_question_choices[#{questionnum}][MCC][#{i}][iscorrect]",'1', @quiz_question_choice.iscorrect) %>
-                &nbsp;<%= text_field "quiz_question_choices[#{questionnum}][MCC][#{i}]", 'txt', :size=>40 %>
-
-            <% end %>
-
-            <%if @question_type.q_type=="MCR" %>
-              <%= radio_button_tag("quiz_question_choices[#{questionnum}][MCR][correctindex]", "#{i}", @quiz_question_choice.iscorrect)%>
-              &nbsp;<%= text_field "quiz_question_choices[#{questionnum}][MCR][#{i}]", 'txt', :size=>40 %>
-            <% end %>
-
-            <%if @question_type.q_type=="TF" %>
-              <% if @quiz_question_choice.txt=="True"%>
-                <%= radio_button_tag("quiz_question_choices[#{questionnum}][TF][1][iscorrect]", 'True', @quiz_question_choice.iscorrect) %>   True
-              <%end%>
-
-              <% if @quiz_question_choice.txt=="False"%>
-                  <%= radio_button_tag("quiz_question_choices[#{questionnum}][TF][1][iscorrect]", 'False', @quiz_question_choice.iscorrect) %>   False
-              <%end%>
-            <% end %>
-        </td>
-        </tr>
-        <% i+=1 %> <br>
-      <%end %>
-
-    <% end %>
+<!--Questionnaire part-->
+<%= form_for @questionnaire do %>
+  <table>
+    <tr>
+      <td valign="top"><label for="questionnaire_name">Name:</label>
+        <%= text_field 'questionnaire', 'name'  %>
+        <%= hidden_field 'questionnaire', 'id' %>
+        <%= hidden_field 'questionnaire', 'type' %>
+      </td>
+    </tr>
   </table>
-<% else %>
-     <table>
-       <tr>
-         <td>Min question score:</td>
-         <td><%= text_field 'questionnaire', 'min_question_score', :size=> 1 %>&nbsp;&nbsp;</td>
-         <td>Max question score:</td>
-         <td><%= text_field 'questionnaire', 'max_question_score', :size=> 1 %>&nbsp;&nbsp;</td>
-         <td>Is this <%= @questionnaire.display_type %> private:</td>
-         <td><%= select(:questionnaire, :private, [ ['no', false],['yes',  true]])%>
-         </td>
-       </tr>
-     </table>
-     <br/>
+  <br/>
+  <table>
+     <tr>
+       <td>Min question score:</td>
+       <td><%= text_field 'questionnaire', 'min_question_score', :size=> 1, :value=>@questionnaire.min_question_score ||= 0 %>&nbsp;&nbsp;</td>
+       <td>Max question score:</td>
+       <td><%= text_field 'questionnaire', 'max_question_score', :size=> 1, :value=>@questionnaire.max_question_score ||= 5 %>&nbsp;&nbsp;</td>
+       <td>Is this <%= @questionnaire.display_type %> private:</td>
+       <td><%= select(:questionnaire, :private, [ ['no', false],['yes',  true]])%>
+       </td>
+     </tr>
+  </table>
+  <% if params[:action] == 'new' %>
+    <%= submit_tag 'Create' %>
+  <% else %>
+    <%= submit_tag 'Update'%>
+  <% end %>
+<% end %>
 
-    <table id="question_actions_table">
+<!--Question part-->
+<hr/>
+<% if !params[:id].nil? and params[:action] == 'edit' %>
+  <table id="question_actions_table">
+    <tr>
+      <td>
+        <%= form_tag :action => 'add_new_questions', :id => params[:id], :questionnaire_type => params[:model], :private => params[:private] do %>
+          <%= submit_tag 'Add' %>
+          <%= text_field 'question', 'total_num', :size => 1, :value => "1" %> more 
+          <%= select "question", "type", 
+              {"Criterion" =>"Criterion",
+               "Scale"=>"Scale",
+               "Dropdown"=>"Dropdown",
+               "Checkbox"=>"Checkbox",
+               "TextArea"=>"TextArea",
+               "TextField"=>"TextField",
+               "UploadFile"=>"UploadFile",
+               "SectionHeader"=>"SectionHeader",
+               "TableHeader"=>"TableHeader",
+               "ColumnHeader"=>"ColumnHeader",
+               } %> question(s)
+        <% end %>
+      </td>
+    </tr>
+  </table>
+  
+  <%= form_tag :action => 'save_all_questions', :id => params[:id], :questionnaire_type => params[:model], :private => params[:private] do %>
+    <table id="questions_table">
       <tr>
-        <td>
-          <input type="button" value="Add" onclick="addQuestions()">
-          <input id="numQuestionsToAdd" type="text" value="1" size=1> more question(s)
-        </td>
+        <th class="head" align="center" width="30">Action</td>
+        <th class="head" align="center" width="30">Seq</td>
+        <th class="head" align="center" width="300">Question</td>
+        <th class="head" align="center" width="100">Type</td>
+        <th class="head" align="center">Weight</td>
       </tr>
-      <tr>
-        <td ><input type="button" value="Delete selected questions" onclick= "deleteQuestions()"></td>
-      </tr>
+      <% i = 1 %>
+      <%questions = @questionnaire.questions.sort { |a,b| a.seq <=> b.seq }%>
+      <% for @question in questions %>
+        <%=@question.edit(i)%>
+        <% i += 1 %>
+      <% end %>
     </table>
-     <table id="questions_table">
-       <%# if @questionnaire.questions.length > 0 %>
-       <tr>
-         <td align=left width=30>Delete</td>
-         <td align=center width=30>Seq</td>
-         <td align=center width=300>Question</td>
-         <td align=center width=100>Type</td>
-         <td align=left>Weight</td>
-       </tr>
-
-       <% i = 1 %>
-       <%questions = @questionnaire.questions.sort { |a,b| a.seq <=> b.seq }%>
-       <% for @question in questions %>
-          <%=@question.edit(i)%>
-          <% i += 1 %>
-       <% end %>
-<%end %>
-</table>
+    <%= submit_tag "Save #{@questionnaire.display_type.downcase} questionnaire", :name=>"save" %>
+    <input style="margin-left:36em" type="submit" name="view_advice" value="Edit/View advice"/>
+    
+    <hr/>
+    <h4>Import/Export (from/to CSV format)</h4>
+    <input type="file" name="csv" />
+    <font size="-1"&nbsp;&nbsp; Format: {question}, {'Numeric' | 'True/False'}, {1-5} ></font>
+    <br />
+    <input type="submit" name="import" value="Import questions"/>
+    <br />
+    <%= submit_tag "Export questions to CSV", :name=>"export" %>
+  <% end %>
+<% end %>
 
 <BR/>
 

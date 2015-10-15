@@ -4,13 +4,13 @@ class Criterion < ScoredQuestion
   #This method returns what to display if an instructor (etc.) is creating or editing a questionnaire (questionnaires_controller.rb)
   def edit(count)
     html ='<tr>'
-    html+='<td align="center"><input id="question_chk' +count.to_s+ '" type="checkbox"></td>'
+    html+='<td align="center"><a rel="nofollow" data-method="delete" href="/questions/' +self.id.to_s+ '">Remove</a></td>'
     html+='<td><input size="6" value="'+self.seq.to_s+'" name="question['+self.id.to_s+'][seq]" id="question_'+self.id.to_s+'_seq" type="text"></td>'
     html+='<td><textarea cols="50" rows="1" name="question['+self.id.to_s+'][txt]" id="question_'+self.id.to_s+'_txt">'+self.txt+'</textarea></td>'
     html+='<td><input size="10" disabled="disabled" value="'+self.type+'" name="question['+self.id.to_s+'][type]" id="question_'+self.id.to_s+'_type" type="text">''</td>'
-    html+='<td><input size="6" value="'+self.weight.to_s+'" name="question['+self.id.to_s+'][weight]" id="question_'+self.id.to_s+'_weight" type="text">''</td>'
-    html+='<td>text area size <input size="6" value="'+self.size.to_s+'" name="question['+self.id.to_s+'][size]" id="question_'+self.id.to_s+'_size" type="text"></td>'
-    html+='<td> max_label <input size="4" value="'+self.max_label.to_s+'" name="question['+self.id.to_s+'][max_label]" id="question_'+self.id.to_s+'_max_label" type="text">  min_label <input size="4" value="'+self.min_label.to_s+'" name="question['+self.id.to_s+'][min_label]" id="question_'+self.id.to_s+'_min_label" type="text"></td>'
+    html+='<td><input size="2" value="'+self.weight.to_s+'" name="question['+self.id.to_s+'][weight]" id="question_'+self.id.to_s+'_weight" type="text">''</td>'
+    html+='<td>text area size <input size="3" value="'+self.size.to_s+'" name="question['+self.id.to_s+'][size]" id="question_'+self.id.to_s+'_size" type="text"></td>'
+    html+='<td> max_label <input size="10" value="'+self.max_label.to_s+'" name="question['+self.id.to_s+'][max_label]" id="question_'+self.id.to_s+'_max_label" type="text">  min_label <input size="10" value="'+self.min_label.to_s+'" name="question['+self.id.to_s+'][min_label]" id="question_'+self.id.to_s+'_min_label" type="text"></td>'
     html+='</tr>'
 
     html.html_safe
@@ -41,7 +41,7 @@ class Criterion < ScoredQuestion
       rows = self.size.split(',')[1]
     end
 
-    html = self.txt + '<br>'
+    html = '<li><p><label for="responses_' +count.to_s+ '">' +self.txt+ '</label></p>'
     if dropdown_or_scale == 'dropdown'
       html += '<table><td valign="top"><textarea cols=' +cols+ ' rows=' +rows+ ' id="responses_' +count.to_s+ '_comments" name="responses[' +count.to_s+ '][comment]" style="overflow:hidden;">'
       html += answer.comments if !answer.nil?
@@ -65,7 +65,7 @@ class Criterion < ScoredQuestion
           html += j.to_s + "</option>"
         end
       end
-      html += "</select></td></table><br><br><br>"
+      html += "</select></td></table><br>"
     elsif dropdown_or_scale == 'scale'
       html += '<input id="responses_' +count.to_s+ '_score" name="responses[' +count.to_s+ '][score]" type="hidden"'
       html += 'value="'+answer.answer.to_s+'"' if !answer.nil?
@@ -102,7 +102,7 @@ class Criterion < ScoredQuestion
       html += '<td width="10%"></td></tr></table>'
       html += '<textarea cols=' +cols+ ' rows=' +rows+ ' id="responses_' +count.to_s+ '_comments" name="responses[' +count.to_s+ '][comment]" style="overflow:hidden;">'
       html += answer.comments if !answer.nil?
-      html += '</textarea><br/>'
+      html += '</textarea><br/><br/>'
 
     end
     html.html_safe

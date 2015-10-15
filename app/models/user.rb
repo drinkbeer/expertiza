@@ -176,17 +176,18 @@ class User < ActiveRecord::Base
     password
   end
 
-  def self.import(row,session,id = nil)
-    if row.length != 4
-      raise ArgumentError, "Not enough items"
+  def self.import(row, row_header,session,id = nil)
+    if row.length != 3
+      raise ArgumentError, "Not enough items: expect 3 columns: login name, full name (first and last name, not seperated with the delimiter), email"
     end
     user = User.find_by_name(row[0])
 
     if user == nil
       attributes = ImportFileHelper::define_attributes(row)
       user = ImportFileHelper::create_new_user(attributes,session)
+      password = user.reset_password         # the password is reset
+      MailerHelper::send_mail_to_user(user, "Your Expertiza account and password have been created", "user_welcome", password).deliver
     else
-      user.password = row[3].strip
       user.email = row[2].strip
       user.fullname = row[1].strip
       user.parent_id = (session[:user]).id

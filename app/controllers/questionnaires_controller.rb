@@ -61,6 +61,93 @@ class QuestionnairesController < ApplicationController
     end
   end
 
+  def view
+    @questionnaire = Questionnaire.find(params[:id])
+  end
+
+  def show
+    @questionnaire = Questionnaire.find(params[:id])
+  end
+
+  # Define a new questionnaire
+  def new
+    @questionnaire = Object.const_get(params[:model].split.join).new
+  end
+
+  def create
+    questionnaire_private = params[:questionnaire][:private] == "true" ? true : false
+    display_type = params[:questionnaire][:type].split('Questionnaire')[0]
+    @questionnaire = Object.const_get(params[:questionnaire][:type]).new
+    @questionnaire.private = questionnaire_private
+    @questionnaire.name = params[:questionnaire][:name]
+    @questionnaire.instructor_id = session[:user].id
+    @questionnaire.min_question_score =  params[:questionnaire][:min_question_score]
+    @questionnaire.max_question_score = params[:questionnaire][:max_question_score]
+    @questionnaire.type = params[:questionnaire][:type]
+    @questionnaire.display_type = display_type
+    @questionnaire.instruction_loc = Questionnaire::DEFAULT_QUESTIONNAIRE_URL
+    begin
+      @questionnaire.save
+      #Create node
+      tree_folder = TreeFolder.find_by_name(@questionnaire.display_type)
+      parent = FolderNode.find_by_node_object_id(tree_folder.id)
+      QuestionnaireNode.create(parent_id: parent.id, node_object_id: @questionnaire.id, type: 'QuestionnaireNode')
+      flash[:success] = 'You have created a questionnaire successfully!'
+    rescue
+      flash[:error] = $!
+    end
+    redirect_to :controller => 'tree_display', :action => 'list'
+  end
+
+  def create_questionnaire
+    @questionnaire = Object.const_get(params[:questionnaire][:type]).new(questionnaire_params)
+
+    # TODO: check for Quiz Questionnaire?
+    if @questionnaire.type == "QuizQuestionnaire" #checking if it is a quiz questionnaire
+      participant_id = params[:pid] #creating a local variable to send as parameter to submitted content if it is a quiz questionnaire
+      @questionnaire.min_question_score = 0
+      @questionnaire.max_question_score = 1
+      @assignment = Assignment.find(params[:aid])
+      author_team = AssignmentTeam.team(Participant.find(participant_id))
+
+      @questionnaire.instructor_id = author_team.id    #for a team assignment, set the instructor id to the team_id
+
+      @successful_create = true
+      save
+
+      save_choices @questionnaire.id
+
+      if @successful_create == true
+        flash[:note] = "Quiz was successfully created"
+      end
+      redirect_to :controller => 'submitted_content', :action => 'edit', :id => participant_id
+    else #if it is not a quiz questionnaire
+      if (session[:user]).role.name == "Teaching Assistant"
+        @questionnaire.instructor_id = Ta.get_my_instructor((session[:user]).id)
+      end
+      save
+
+      redirect_to :controller => 'tree_display', :action => 'list'
+    end
+  end
+
+  # Edit a questionnaire
+  def edit
+    @questionnaire = Questionnaire.find(params[:id])
+    redirect_to Questionnaire if @questionnaire == nil
+  end
+
+  def update
+    @questionnaire = Questionnaire.find(params[:id])
+    begin
+      @questionnaire.update_attributes(questionnaire_params)
+      flash[:success] = 'Questionnaire has been updated successfully!'
+    rescue
+      flash[:error] = $!
+    end
+    redirect_to edit_questionnaire_path(@questionnaire.id.to_s.to_sym)
+  end
+
   # Remove a given questionnaire
   def delete
     @questionnaire = Questionnaire.find(params[:id])
@@ -83,29 +170,79 @@ class QuestionnairesController < ApplicationController
     redirect_to :action => 'list', :controller => 'tree_display'
   end
 
-  def view
-    @questionnaire = Questionnaire.find(params[:id])
+  def edit_advice  ##Code used to be in this class, was removed.  I have not checked the other class.
+    redirect_to :controller => 'advice', :action => 'edit_advice'
   end
 
-  #View a quiz questionnaire
-  def view_quiz
-    @questionnaire = Questionnaire.find(params[:id])
-    @participant = Participant.find(params[:pid]) #creating an instance variable since it needs to be sent to submitted_content/edit
-    render :view
+  def save_advice
+    begin
+      for advice_key in params[:advice].keys
+        QuestionAdvice.update(advice_key, params[:advice][advice_key])
+      end
+      flash[:notice] = "The questionnaire's question advice was successfully saved"
+      #redirect_to :action => 'list'
+      redirect_to :controller => 'advice', :action => 'save_advice'
+    rescue
+      flash[:error] = $!
+    end 
   end
 
-  def show
+  # Toggle the access permission for this assignment from public to private, or vice versa
+  def toggle_access
     @questionnaire = Questionnaire.find(params[:id])
+    @questionnaire.private = !@questionnaire.private
+    @questionnaire.save
+    @access = @questionnaire.private == true ? "private" : "public"
+    undo_link("Questionnaire \"#{@questionnaire.name}\" has been made #{@access} successfully. ")
+    redirect_to :controller => 'tree_display', :action => 'list'
   end
 
-  # Edit a questionnaire
-  def edit
-    @questionnaire = Questionnaire.find(params[:id])
-    redirect_to Questionnaire if @questionnaire == nil
+  #Zhewei: This method is used to add new questions when editing questionnaire.
+  def add_new_questions    
+    questionnaire_id = params[:id] if params[:id] != nil
+    (1..params[:question][:total_num].to_i).each do |i|
+      question = Object.const_get(params[:question][:type]).create(txt: 'Edit question content here', questionnaire_id: questionnaire_id, seq: i, type: params[:question][:type], break_before: true)
+      if question.is_a? ScoredQuestion
+        question.weight = 1
+        question.max_label = 'Strong agree'
+        question.min_label = 'Strong disagree'
+      end
+      if question.is_a? Criterion
+        question.size = '50,3'
+      end
+      if question.is_a? Dropdown
+        question.alternatives = '0|1|2|3|4|5'
+      end
+      if question.is_a? TextResponse
+        question.size = '60,5'
+      end
+      begin
+        question.save
+      rescue
+        flash[:error] = $!
+      end
+    end
+    redirect_to edit_questionnaire_path(questionnaire_id.to_sym)
+  end
 
+  #Zhewei: This method is used to save all questions in current questionnaire.
+  def save_all_questions
+    questionnaire_id = params[:id] if params[:id] != nil
     if params['save']
-      @questionnaire.update_attributes(params[:questionnaire])
-      redirect_to :action => 'view',:id => @questionnaire
+      params[:question].each_pair do |k, v|
+        @question = Question.find(k)
+        #example of 'v' value
+        #{"seq"=>"1.0", "txt"=>"WOW", "weight"=>"1", "size"=>"50,3", "max_label"=>"Strong agree", "min_label"=>"Not agree"}
+        v.each_pair do |key, value|
+          @question.send(key+'=', value) if @question.send(key) != value
+        end
+        begin
+          @question.save
+          flash[:success] = 'All questions has been saved successfully!'
+        rescue
+          flash[:error] = $!
+        end
+      end
     end
 
     export if params['export']
@@ -114,78 +251,16 @@ class QuestionnairesController < ApplicationController
     if params['view_advice']
       redirect_to :controller => 'advice', :action => 'edit_advice', :id => params[:questionnaire][:id]
     end
+    redirect_to edit_questionnaire_path(questionnaire_id.to_sym)
   end
-
-
-  #edit a quiz questionnaire
-  def edit_quiz
+  #=========================================================================================================
+  #Separate methods for quiz questionnaire
+  #=========================================================================================================
+  #View a quiz questionnaire
+  def view_quiz
     @questionnaire = Questionnaire.find(params[:id])
-    render :edit
-  end
-
-
-  #save an updated quiz questionnaire to the database
-  def update_quiz
-    @questionnaire = Questionnaire.find(params[:id])
-    redirect_to :controller => 'submitted_content', :action => 'view', :id => params[:pid] if @questionnaire == nil
-    if params['save']
-      @questionnaire.update_attributes(params[:questionnaire])
-      # for qtypeid in params[:question_type].keys
-      #   @question_type = QuestionType.find(qtypeid)
-      #   @question_type.update_attributes(params[:question_type][qtypeid])
-      # end
-      for qid in params[:question].keys
-        @question = Question.find(qid)
-        @question.update_attributes(params[:question][qid])
-        @question_type = QuestionType.find_by_question_id(qid)
-        @quiz_question_choices = QuizQuestionChoice.where(question_id: qid)
-        i=1
-        for quiz_question_choice in @quiz_question_choices
-            if (@question_type.q_type=="MCC")
-              if(params[:quiz_question_choices][@question.id.to_s][@question_type.q_type][i.to_s])
-                  quiz_question_choice.update_attributes(:iscorrect => params[:quiz_question_choices][@question.id.to_s][@question_type.q_type][i.to_s][:iscorrect],:txt=>  params[:quiz_question_choices][@question.id.to_s][@question_type.q_type][i.to_s][:txt])
-              else
-                quiz_question_choice.update_attributes(:iscorrect => '0',:txt=> params[:quiz_question_choices][quiz_question_choice.id.to_s][:txt])
-              end
-            end
-            if (@question_type.q_type=="MCR")
-              if  params[:quiz_question_choices][@question.id.to_s][@question_type.q_type][:correctindex]== i.to_s
-                quiz_question_choice.update_attributes(:iscorrect => '1',:txt=> params[:quiz_question_choices][@question.id.to_s][@question_type.q_type][i.to_s][:txt])
-              else
-                quiz_question_choice.update_attributes(:iscorrect => '0',:txt=> params[:quiz_question_choices][@question.id.to_s][@question_type.q_type][i.to_s][:txt])
-              end
-            end
-            if (@question_type.q_type=="TF")
-              if  params[:quiz_question_choices][@question.id.to_s][@question_type.q_type][1.to_s][:iscorrect]== "True" # the statement is correct
-                if quiz_question_choice.txt =="True"
-                  quiz_question_choice.update_attributes(:iscorrect => '1') # the statement is correct so "True" is the right answer
-                else
-                  quiz_question_choice.update_attributes(:iscorrect => '0')
-                end
-              else # the statement is not correct
-                if quiz_question_choice.txt =="True"
-                  quiz_question_choice.update_attributes(:iscorrect => '0')
-                else
-                  quiz_question_choice.update_attributes(:iscorrect => '1') # the statement is not correct so "False" is the right answer
-                end
-              end
-            end
-
-            i+=1
-        end
-      end
-    end
-    redirect_to :controller => 'submitted_content', :action => 'view', :id => params[:pid]
-  end
-
-  # Define a new questionnaire
-  def new
-    @questionnaire = Object.const_get(params[:model]).new
-    @questionnaire.private = params[:private]
-    @questionnaire.min_question_score = Questionnaire::DEFAULT_MIN_QUESTION_SCORE
-    @questionnaire.max_question_score = Questionnaire::DEFAULT_MAX_QUESTION_SCORE
-    @questionnaire.instruction_loc = Questionnaire::DEFAULT_QUESTIONNAIRE_URL
-    @questionnaire.section = "Regular"
+    @participant = Participant.find(params[:pid]) #creating an instance variable since it needs to be sent to submitted_content/edit
+    render :view
   end
 
   #define a new quiz questionnaire
@@ -224,40 +299,6 @@ class QuestionnairesController < ApplicationController
     end
   end
 
-  # Save the new questionnaire to the database
-  def create_questionnaire
-    @questionnaire = Object.const_get(params[:questionnaire][:type]).new(params[:questionnaire])
-
-    # TODO: check for Quiz Questionnaire?
-    if @questionnaire.type == "QuizQuestionnaire" #checking if it is a quiz questionnaire
-      participant_id = params[:pid] #creating a local variable to send as parameter to submitted content if it is a quiz questionnaire
-      @questionnaire.min_question_score = 0
-      @questionnaire.max_question_score = 1
-      @questionnaire.section = "Quiz"
-      @assignment = Assignment.find(params[:aid])
-      author_team = AssignmentTeam.team(Participant.find(participant_id))
-
-      @questionnaire.instructor_id = author_team.id    #for a team assignment, set the instructor id to the team_id
-
-      @successful_create = true
-      save
-
-      save_choices @questionnaire.id
-
-      if @successful_create == true
-        flash[:note] = "Quiz was successfully created"
-      end
-      redirect_to :controller => 'submitted_content', :action => 'edit', :id => participant_id
-    else #if it is not a quiz questionnaire
-      if (session[:user]).role.name == "Teaching Assistant"
-        @questionnaire.instructor_id = Ta.get_my_instructor((session[:user]).id)
-      end
-      save
-
-      redirect_to :controller => 'tree_display', :action => 'list'
-    end
-  end
-
   #seperate method for creating a quiz questionnaire because of differences in permission
   def create_quiz_questionnaire
     valid = valid_quiz
@@ -269,6 +310,70 @@ class QuestionnairesController < ApplicationController
     end
   end
 
+  #edit a quiz questionnaire
+  def edit_quiz
+    @questionnaire = Questionnaire.find(params[:id])
+    if !@questionnaire.taken_by_anyone?
+      render :edit
+    else
+      flash[:error] = "Your quiz has been taken by some other students, editing cannot be done any more."
+      redirect_to :controller => 'submitted_content', :action => 'view', :id => params[:pid]
+    end
+
+  end
+
+  #save an updated quiz questionnaire to the database
+  def update_quiz
+    @questionnaire = Questionnaire.find(params[:id])
+    redirect_to :controller => 'submitted_content', :action => 'view', :id => params[:pid] if @questionnaire == nil
+    if params['save']
+      @questionnaire.update_attributes(questionnaire_params)
+
+      for qid in params[:question].keys
+        @question = Question.find(qid)
+        @question.txt = params[:question][qid.to_sym][:txt]
+        @question.save
+
+        @quiz_question_choices = QuizQuestionChoice.where(question_id: qid)
+        i=1
+        for quiz_question_choice in @quiz_question_choices
+            if (@question.type=="MultipleChoiceCheckbox")
+              if(params[:quiz_question_choices][@question.id.to_s][@question.type][i.to_s])
+                  quiz_question_choice.update_attributes(:iscorrect => params[:quiz_question_choices][@question.id.to_s][@question.type][i.to_s][:iscorrect],:txt=>  params[:quiz_question_choices][@question.id.to_s][@question.type][i.to_s][:txt])
+              else
+                quiz_question_choice.update_attributes(:iscorrect => '0',:txt=> params[:quiz_question_choices][quiz_question_choice.id.to_s][:txt])
+              end
+            end
+            if (@question.type=="MultipleChoiceRadio")
+              if  params[:quiz_question_choices][@question.id.to_s][@question.type][:correctindex]== i.to_s
+                quiz_question_choice.update_attributes(:iscorrect => '1',:txt=> params[:quiz_question_choices][@question.id.to_s][@question.type][i.to_s][:txt])
+              else
+                quiz_question_choice.update_attributes(:iscorrect => '0',:txt=> params[:quiz_question_choices][@question.id.to_s][@question.type][i.to_s][:txt])
+              end
+            end
+            if (@question.type=="TrueFalse")
+              if  params[:quiz_question_choices][@question.id.to_s][@question.type][1.to_s][:iscorrect]== "True" # the statement is correct
+                if quiz_question_choice.txt =="True"
+                  quiz_question_choice.update_attributes(:iscorrect => '1') # the statement is correct so "True" is the right answer
+                else
+                  quiz_question_choice.update_attributes(:iscorrect => '0')
+                end
+              else # the statement is not correct
+                if quiz_question_choice.txt =="True"
+                  quiz_question_choice.update_attributes(:iscorrect => '0')
+                else
+                  quiz_question_choice.update_attributes(:iscorrect => '1') # the statement is not correct so "False" is the right answer
+                end
+              end
+            end
+
+            i+=1
+        end
+      end
+    end
+    redirect_to :controller => 'submitted_content', :action => 'view', :id => params[:pid]
+  end
+
   def valid_quiz
     num_quiz_questions = Assignment.find(params[:aid]).num_quiz_questions
     valid = "valid"
@@ -278,31 +383,35 @@ class QuestionnairesController < ApplicationController
         #One of the questions text is not filled out
         valid = "Please make sure all questions have text"
         break
-      elsif params[:question_type][i.to_s][:type] == nil
+      elsif !params.has_key?(:question_type) || !params[:question_type].has_key?(i.to_s) || params[:question_type][i.to_s][:type] == nil
         #A type isnt selected for a question
         valid = "Please select a type for each question"
         break
+      elsif params[:questionnaire][:name]==""
+        #questionnaire name is not specified
+        valid = "Please specify quiz name (please do not use your name or id)."
+        break
       else
         type = params[:question_type][i.to_s][:type]
-        if type == 'MCC' or type == 'MCR'
+        if type == 'MultipleChoiceCheckbox' or type == 'MultipleChoiceRadio'
           correct_selected = false
           (1..4).each do |x|
             if params[:new_choices][i.to_s][type][x.to_s][:txt] == ''
               #Text isnt provided for an option
               valid = "Please make sure every question has text for all options"
               break
-            elsif type == 'MCR' and not params[:new_choices][i.to_s][type][x.to_s][:iscorrect] == nil
+            elsif type == 'MultipleChoiceRadio' and not params[:new_choices][i.to_s][type][x.to_s][:iscorrect] == nil
               correct_selected = true
-            elsif type == 'MCC' and not params[:new_choices][i.to_s][type][x.to_s][:iscorrect] == 0.to_s
+            elsif type == 'MultipleChoiceCheckbox' and not params[:new_choices][i.to_s][type][x.to_s][:iscorrect] == 0.to_s
               correct_selected = true
             end
           end
-          unless correct_selected == true
+          if valid == "valid" && !correct_selected
             #A correct option isnt selected for a check box or radio question
             valid = "Please select a correct answer for all questions"
             break
           end
-        elsif type == 'TF'
+        elsif type == 'TF' # TF is not disabled. We need to test TF later.
           if params[:new_choices][i.to_s]["TF"] == nil
             #A correct option isnt selected for a true/false question
             valid = "Please select a correct answer for all questions"
@@ -315,74 +424,15 @@ class QuestionnairesController < ApplicationController
     return valid
   end
 
-  def select_questionnaire_type
-    @questionnaire = Object.const_get(params[:questionnaire][:type]).new(params[:questionnaire])
-    @questionnaire.private = params[:questionnaire][:private]
-    @questionnaire.min_question_score = params[:questionnaire][:min_question_score]
-    @questionnaire.max_question_score = params[:questionnaire][:max_question_score]
-    @questionnaire.section = params[:questionnaire][:section]
-    @questionnaire.id = params[:questionnaire][:id]
-    @questionnaire.display_type = params[:questionnaire][:display_type]
-  end
-
-  def create
-    @questionnaire = Object.const_get(params[:questionnaire][:type]).new(params[:questionnaire])
-    if (session[:user]).role.name == "Teaching Assistant"
-      @questionnaire.instructor_id = Ta.get_my_instructor((session[:user]).id)
-    else
-      @questionnaire.instructor_id = session[:user].id
-    end
-    save
-    redirect_to :controller => 'tree_display', :action => 'list'
-  end
-
-  def update
-    @questionnaire = Questionnaire.find(params[:id])
-    if current_user.role == Role.ta
-      @questionnaire.instructor_id = Ta.get_my_instructor(current_user.id)
-    else
-      @questionnaire.instructor_id = current_user.id
-    end
-
-    if @questionnaire.update_attributes(params[:questionnaire])&& save_questions(params[:questionnaire][:id])
-      redirect_to :controller => 'tree_display', :action => 'list'
-    else
-      render 'edit'
-    end
-  end
-
-  def edit_advice  ##Code used to be in this class, was removed.  I have not checked the other class.
-    redirect_to :controller => 'advice', :action => 'edit_advice'
-  end
-
-  def save_advice
-    begin
-      for advice_key in params[:advice].keys
-        QuestionAdvice.update(advice_key, params[:advice][advice_key])
-      end
-      flash[:notice] = "The questionnaire's question advice was successfully saved"
-      #redirect_to :action => 'list'
-      redirect_to :controller => 'advice', :action => 'save_advice'
-    end   ##Rescue clause was removed; why?
-  end
-
-  # Toggle the access permission for this assignment from public to private, or vice versa
-  def toggle_access
-    @questionnaire = Questionnaire.find(params[:id])
-    @questionnaire.private = !@questionnaire.private
-    @questionnaire.save
-    @access = @questionnaire.private == true ? "private" : "public"
-    undo_link("Questionnaire \"#{@questionnaire.name}\" has been made #{@access} successfully. ")
-    redirect_to :controller => 'tree_display', :action => 'list'
-  end
 
   private
-
   #save questionnaire object after create or edit
   def save
-    begin
+
       @questionnaire.save!
+
       save_questions @questionnaire.id if @questionnaire.id != nil and @questionnaire.id > 0
+      # We do not create node for quiz questionnaires
       if @questionnaire.type != "QuizQuestionnaire"
         pFolder = TreeFolder.find_by_name(@questionnaire.display_type)
         parent = FolderNode.find_by_node_object_id(pFolder.id)
@@ -391,10 +441,7 @@ class QuestionnairesController < ApplicationController
         end
       end
       undo_link("Questionnaire \"#{@questionnaire.name}\" has been updated successfully. ")
-    rescue
-      @successful_create = false
-      flash[:error] = $!
-    end
+
   end
 
   #save parameters for new questions
@@ -411,29 +458,20 @@ class QuestionnairesController < ApplicationController
     if params[:new_question]
       # The new_question array contains all the new questions
       # that should be saved to the database
+
       for question_key in params[:new_question].keys
+
         q = Question.new()
         q.txt=params[:new_question][question_key]
         q.questionnaire_id = questionnaire_id
+        q.type = params[:question_type][question_key][:type]
+        q.seq = question_key.to_i
         if @questionnaire.type == "QuizQuestionnaire"
           q.weight = 1 #setting the weight to 1 for quiz questionnaire since the model validates this field
-          # if q.true_false == ''
-          q.true_false = false
         end
         unless q.txt.strip.empty?
+
           q.save
-          if @questionnaire.type == "QuizQuestionnaire"
-            save_new_question_parameters(q.id, question_key)
-          end
-          questionnaire = Questionnaire.find(questionnaire_id)
-          if questionnaire.section == "Custom"
-            for i in (questionnaire.min_question_score .. questionnaire.max_question_score)
-              a = QuestionAdvice.new(:score => i, :advice => nil)
-              a.question_id = q.id
-              a.save
-            end
-            save_new_question_parameters(q.id, question_key)
-          end
         end
       end
     end
@@ -447,7 +485,7 @@ class QuestionnairesController < ApplicationController
     @deleted_questions = []
     for question in questions
       should_delete = true
-      if params[:question] != nil
+      if question_params != nil
         for question_key in params[:question].keys
           if question_key.to_s === question.id.to_s
             should_delete = false
@@ -469,13 +507,14 @@ class QuestionnairesController < ApplicationController
   # Handles questions whose wording changed as a result of the edit
   # @param [Object] questionnaire_id
   def save_questions(questionnaire_id)
+
     delete_questions questionnaire_id
     save_new_questions questionnaire_id
 
     if params[:question]
       for question_key in params[:question].keys
-        begin
-          if params[:question][question_key][:txt].strip.empty?
+
+        if params[:question][question_key][:txt].strip.empty?
             # question text is empty, delete the question
             Question.delete(question_key)
           else
@@ -485,9 +524,7 @@ class QuestionnairesController < ApplicationController
               Rails.logger.info(question.errors.messages.inspect)
             end
           end
-        rescue ActiveRecord::RecordNotFound
-          # ignored
-        end
+
       end
     end
   end
@@ -502,23 +539,20 @@ class QuestionnairesController < ApplicationController
 
       for question in questions
         q_type = params[:question_type][questionnum.to_s][:type]
-        if(q_type!="Essay")
           for choice_key in params[:new_choices][questionnum.to_s][q_type].keys
-
             if params[:new_choices][questionnum.to_s][q_type][choice_key]["weight"] == 1.to_s
               score = 1
             else
               score = 0
             end
-
-            if(q_type=="MCC")
+            if(q_type=="MultipleChoiceCheckbox")
               if (params[:new_choices][questionnum.to_s][q_type][choice_key][:iscorrect]==1.to_s)
                 q = QuizQuestionChoice.new(:txt => params[:new_choices][questionnum.to_s][q_type][choice_key][:txt], :iscorrect => "true",:question_id => question.id)
               else
                 q = QuizQuestionChoice.new(:txt => params[:new_choices][questionnum.to_s][q_type][choice_key][:txt], :iscorrect => "false",:question_id => question.id)
               end
               q.save
-            else  if(q_type=="TF")
+            elsif(q_type=="TrueFalse")
               if (params[:new_choices][questionnum.to_s][q_type][1.to_s][:iscorrect]==choice_key)
                 q = QuizQuestionChoice.new(:txt => "True", :iscorrect => "true",:question_id => question.id)
                 q.save
@@ -539,17 +573,19 @@ class QuestionnairesController < ApplicationController
               q.save
             end
           end
-
-        end
+        questionnum += 1
+        question.weight = 1
       end
-      questionnum += 1
-      question.weight = 1
-      question.true_false = false
     end
   end
+
+  def questionnaire_params
+    params.require(:questionnaire).permit(:name, :instructor_id, :private, :min_question_score, :max_question_score, :type, :display_type, :instruction_loc)
   end
 
-  private
+  def question_params
+    params.require(:question).permit(:txt, :weight, :questionnaire_id, :seq, :type, :size, :alternatives, :break_before, :max_label, :min_label)
+  end
 
   # FIXME: These private methods belong in the Questionnaire model
 
@@ -596,15 +632,6 @@ class QuestionnairesController < ApplicationController
           newadvice = advice.clone
           newadvice.question_id = newquestion.id
           newadvice.save
-        end
-
-        if @questionnaire.section == "Custom"
-          old_question_type = QuestionType.find_by_question_id(question.id)
-          unless old_question_type.nil?
-            new_question_type = old_question_type.clone
-            new_question_type.question_id = newquestion.id
-            new_question_type.save
-          end
         end
       end
 
