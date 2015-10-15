@@ -107,7 +107,24 @@ class SuggestionController < ApplicationController
     TeamUserNode.create(:parent_id => parent.id, :node_object_id => t_user.id)
   end
 
-  def
+  def send_email
+    proposer = User.find(@user_id)
+    teams_users = TeamsUser.where(team_id: @team_id)
+    cc_mail_list = Array.new
+    teams_users.each do |teams_user|
+      cc_mail_list << User.find(teams_user.user_id).email if teams_user.user_id != proposer.id
+    end
+    Mailer.suggested_topic_approved_message(
+        { to: proposer.email,
+          cc: cc_mail_list,
+          subject: "Suggested topic '#{@suggestion.title}' has already been approved",
+          body: {
+              approved_topic_name: @suggestion.title,
+              proposer: proposer.name
+          }
+        }
+    ).deliver
+  end
 
   def approve_suggestion
     @suggestion = Suggestion.find(params[:id])
@@ -124,7 +141,7 @@ class SuggestionController < ApplicationController
     end
 
     #--zhewei-----06/22/2015--------------------------------------------------------------------------------------
-    # If you want to create a new team with topic and team members on view, you have to 
+    # If you want to create a new team with topic and team members on view, you have to
     # 1. create new Team
     # 2. create new TeamsUser
     # 3. create new SignedUpTeam
@@ -135,54 +152,29 @@ class SuggestionController < ApplicationController
     #if proposer's signup_pref is yes, has a team, does not hold a topic yet --> assign topic
     #if proposer's signup_pref is yes, has a team and topic --> send email says that 'approved'
     #if proposer's signup_pref is no --> send email says that 'approved'
-    if @suggestion.signup_preference == 'Y' 
-      #if this user do not have team in this assignment, create one for him/her and assign this topic to this team.
-      if @team_id.nil?
-        create_new_team();
-      else #this user has a team in this assignment, check whether this team has topic or not
-        if @topic_id.nil?
-          #clean waitlists
-          SignedUpTeam.where(team_id: @team_id, is_waitlisted: 1).destroy_all
-          SignedUpTeam.create(topic_id: @signuptopic.id, team_id: @team_id, is_waitlisted: 0)
-        else
-          @signuptopic.private_to = @user_id
-          @signuptopic.save
-          #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
-          proposer = User.find(@user_id)
-          teams_users = TeamsUser.where(team_id: @team_id)
-          cc_mail_list = Array.new
-          teams_users.each do |teams_user|
-            cc_mail_list << User.find(teams_user.user_id).email if teams_user.user_id != proposer.id
-          end
-          Mailer.suggested_topic_approved_message(
-          { to: proposer.email,
-            cc: cc_mail_list,
-            subject: "Suggested topic '#{@suggestion.title}' has already been approved",
-            body: {
-              approved_topic_name: @suggestion.title,
-              proposer: proposer.name
-            }
-            ).deliver
+    if @suggestion.unityID != ''
+      @user_id = User.where(name: @suggestion.unityID).first.id
+      @team_id = TeamsUser.team_id(@suggestion.assignment_id, @user_id)
+      @topic_id = SignedUpTeam.topic_id(@suggestion.assignment_id, @user_id)
+      if @suggestion.signup_preference == 'Y'
+        #if this user do not have team in this assignment, create one for him/her and assign this topic to this team.
+        if @team_id.nil?
+          create_new_team
+        else #this user has a team in this assignment, check whether this team has topic or not
+          if @topic_id.nil?
+            #clean waitlists
+            SignedUpTeam.where(team_id: @team_id, is_waitlisted: 1).destroy_all
+            SignedUpTeam.create(topic_id: @signuptopic.id, team_id: @team_id, is_waitlisted: 0)
+          else
+            @signuptopic.private_to = @user_id
+            @signuptopic.save
+            #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
+            send_email
           end
         end
       else
         #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
-        proposer = User.find(@user_id)
-        teams_users = TeamsUser.where(team_id: @team_id)
-        cc_mail_list = Array.new
-        teams_users.each do |teams_user|
-          cc_mail_list << User.find(teams_user.user_id).email if teams_user.user_id != proposer.id
-        end
-        Mailer.suggested_topic_approved_message(
-        { to: proposer.email,
-          cc: cc_mail_list,
-          subject: "Suggested topic '#{@suggestion.title}' has already been approved",
-          body: {
-            approved_topic_name: @suggestion.title,
-            proposer: proposer.name
-          }
-        }
-        ).deliver
+        send_email
       end
     end
     redirect_to :action => 'show', :id => @suggestion
