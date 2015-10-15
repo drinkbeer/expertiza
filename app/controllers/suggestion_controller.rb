@@ -126,9 +126,11 @@ class SuggestionController < ApplicationController
     ).deliver
   end
 
-  def approve_suggestion
+  def approve
     @suggestion = Suggestion.find(params[:id])
-
+    @user_id = @suggestion.unityID.to_i
+    @team_id = TeamsUser.team_id(@suggestion.assignment_id, @user_id)
+    @topic_id = SignedUpTeam.topic_id(@suggestion.assignment_id, @user_id)
     @signuptopic = SignUpTopic.new
     @signuptopic.topic_identifier = 'S' + Suggestion.where("assignment_id = ? and id <= ?", @suggestion.assignment_id, @suggestion.id).size.to_s
     @signuptopic.topic_name = @suggestion.title
@@ -139,7 +141,9 @@ class SuggestionController < ApplicationController
     else
       flash[:error] = 'Error when approving the suggestion.'
     end
+  end
 
+  def notification
     #--zhewei-----06/22/2015--------------------------------------------------------------------------------------
     # If you want to create a new team with topic and team members on view, you have to
     # 1. create new Team
@@ -152,31 +156,31 @@ class SuggestionController < ApplicationController
     #if proposer's signup_pref is yes, has a team, does not hold a topic yet --> assign topic
     #if proposer's signup_pref is yes, has a team and topic --> send email says that 'approved'
     #if proposer's signup_pref is no --> send email says that 'approved'
-    if @suggestion.unityID != ''
-      @user_id = User.where(name: @suggestion.unityID).first.id
-      @team_id = TeamsUser.team_id(@suggestion.assignment_id, @user_id)
-      @topic_id = SignedUpTeam.topic_id(@suggestion.assignment_id, @user_id)
-      if @suggestion.signup_preference == 'Y'
-        #if this user do not have team in this assignment, create one for him/her and assign this topic to this team.
-        if @team_id.nil?
-          create_new_team
-        else #this user has a team in this assignment, check whether this team has topic or not
-          if @topic_id.nil?
-            #clean waitlists
-            SignedUpTeam.where(team_id: @team_id, is_waitlisted: 1).destroy_all
-            SignedUpTeam.create(topic_id: @signuptopic.id, team_id: @team_id, is_waitlisted: 0)
-          else
-            @signuptopic.private_to = @user_id
-            @signuptopic.save
-            #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
-            send_email
-          end
+    if @suggestion.signup_preference == 'Y'
+      #if this user do not have team in this assignment, create one for him/her and assign this topic to this team.
+      if @team_id.nil?
+        create_new_team
+      else #this user has a team in this assignment, check whether this team has topic or not
+        if @topic_id.nil?
+          #clean waitlists
+          SignedUpTeam.where(team_id: @team_id, is_waitlisted: 1).destroy_all
+          SignedUpTeam.create(topic_id: @signuptopic.id, team_id: @team_id, is_waitlisted: 0)
+        else
+          @signuptopic.private_to = @user_id
+          @signuptopic.save
+          #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
+          send_email
         end
-      else
-        #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
-        send_email
       end
+    else
+      #if this team has topic, Expertiza will send an email (suggested_topic_approved_message) to this team
+      send_email
     end
+  end
+
+  def approve_suggestion
+    approve
+    notification
     redirect_to :action => 'show', :id => @suggestion
   end
 
