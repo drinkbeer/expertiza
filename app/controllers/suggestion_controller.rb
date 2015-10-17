@@ -19,7 +19,7 @@ class SuggestionController < ApplicationController
   end
 
   def add_comment
-    @suggestioncomment = SuggestionComment.new(:vote => params[:suggestion_comment][:vote], :comments => params[:suggestion_comment][:comments])
+    @suggestioncomment = SuggestionComment.new( vote: params[:suggestion_comment][:vote], comments: params[:suggestion_comment][:comments])
     @suggestioncomment.suggestion_id=params[:id]
     @suggestioncomment.commenter= session[:user].name
     if  @suggestioncomment.save
@@ -28,14 +28,14 @@ class SuggestionController < ApplicationController
       flash[:error] = "Error while adding comment"
     end
     if current_role_name.eql? 'Student'
-      redirect_to :action => "student_view", :id => params[:id]
+      redirect_to action: "student_view", id: params[:id]
     else
-      redirect_to :action => "show", :id => params[:id]
+      redirect_to action: "show", id: params[:id]
     end
   end
   # GETs should be safe (see http://www.w3.org/2001/tag/doc/whenToUseGet.html)
-  verify :method => :post, :only => [ :destroy, :create, :update ],
-    :redirect_to => { :action => :list }
+  verify method: :post, only: [ :destroy, :create, :update ],
+    redirect_to: { action: :list }
 
   def list
     @suggestions = Suggestion.where(assignment_id: params[:id])
@@ -55,9 +55,9 @@ class SuggestionController < ApplicationController
   end
 
   def update_suggestion
-    Suggestion.find(params[:id]).update_attributes(:title => params[:suggestion][:title], :description => params[:suggestion][:description],
-    	:signup_preference => params[:suggestion][:signup_preference])
-    redirect_to :action => 'new', :id => Suggestion.find(params[:id]).assignment_id
+    Suggestion.find(params[:id]).update_attributes(title: params[:suggestion][:title], description: params[:suggestion][:description],
+    	signup_preference: params[:suggestion][:signup_preference])
+    redirect_to action: 'new', id: Suggestion.find(params[:id]).assignment_id
   end 
 
   def new
@@ -82,7 +82,7 @@ class SuggestionController < ApplicationController
       flash[:success] = 'Thank you for your suggestion!' if @suggestion.unityID != ''
       flash[:success] = 'You have already submit an anonymous suggestion. It will not show in the suggested topic table below.' if @suggestion.unityID == ''
     end
-    redirect_to :action => 'new', :id => @suggestion.assignment_id
+    redirect_to action: 'new', id: @suggestion.assignment_id
   end
 
   def confirm_save
@@ -135,8 +135,8 @@ class SuggestionController < ApplicationController
           new_team = AssignmentTeam.create(name: 'Team' + @user_id.to_s + '_' + rand(1000).to_s, parent_id: @signuptopic.assignment_id, type: 'AssignmentTeam')
           t_user = TeamsUser.create(team_id: new_team.id, user_id: @user_id)
           SignedUpTeam.create(topic_id: @signuptopic.id, team_id: new_team.id, is_waitlisted: 0)
-          parent = TeamNode.create(:parent_id => @signuptopic.assignment_id, :node_object_id => new_team.id)
-          TeamUserNode.create(:parent_id => parent.id, :node_object_id => t_user.id)
+          parent = TeamNode.create(parent_id: @signuptopic.assignment_id, node_object_id: new_team.id)
+          TeamUserNode.create(parent_id: parent.id, node_object_id: t_user.id)
         else #this user has a team in this assignment, check whether this team has topic or not
           if @topic_id.nil?
             #clean waitlists
@@ -184,7 +184,7 @@ class SuggestionController < ApplicationController
         ).deliver
       end
     end
-    redirect_to :action => 'show', :id => @suggestion
+    redirect_to action: 'show', id: @suggestion
   end
 
   def reject_suggestion
@@ -195,7 +195,7 @@ class SuggestionController < ApplicationController
     else
       flash[:error] = 'Error when rejecting the suggestion'
     end
-    redirect_to :action => 'show', :id => @suggestion
+    redirect_to action: 'show', id: @suggestion
   end
 
   private
