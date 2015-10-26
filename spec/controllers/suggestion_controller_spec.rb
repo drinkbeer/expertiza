@@ -23,9 +23,7 @@ describe "test3" do
     fill_in "Password", with: 'password'
     click_button "SIGN IN"
 
-    num = Suggestion.last.id
-    path = "/suggestion/" + num.to_s
-    visit path
+    visit "/suggestion/" + Suggestion.last.id.to_s
     click_button "Approve suggestion"
 
     click_link "Logout"
