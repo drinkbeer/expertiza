@@ -46,7 +46,9 @@ class Response < ActiveRecord::Base
 
     count = 0
     answers = Answer.where(response_id: self.response_id)
-    questionnaire = Question.find(answers.first.question_id).questionnaire
+
+    questionnaire = self.questionnaire_by_answer(answers.first)
+
     questionnaire_max = questionnaire.max_question_score
     questions=questionnaire.questions.sort { |a,b| a.seq <=> b.seq }
     #loop through questions so the the questions are displayed in order based on seq (sequence number)
@@ -67,13 +69,21 @@ class Response < ActiveRecord::Base
     else
       comment = ''
     end
-    code += "<B>Additional Comment:</B><BR/>"+comment+"</div>"
+    code += "<BR><BR><B>Additional Comment:</B><BR/>"+comment+"</div>"
     return code.html_safe
   end
 
   # Computes the total score awarded for a review
   def get_total_score
-    scores.map(&:answer).sum
+    # only count the scorable questions, only when the answer is not nil (we accept nil as answer for scorable questions, and they will not be counted towards the total score)
+    sum=0
+    scores.each do |s|
+      question = Question.find(s.question_id)
+      if !s.answer.nil? && question.is_a?(ScoredQuestion)
+        sum += s.answer*question.weight
+      end
+    end
+    sum
   end
 
   def delete
@@ -85,19 +95,28 @@ class Response < ActiveRecord::Base
   # Returns the average score for this response as an integer (0-100)
   def get_average_score()
     if get_maximum_score != 0 then
-      ((get_total_score.to_f / get_maximum_score.to_f) * 100).to_i
+      ((get_total_score.to_f / get_maximum_score.to_f) * 100).round
     else
-      0
+      "N/A"
     end
   end
 
   # Returns the maximum possible score for this response
   def get_maximum_score()
-    max_score = 0
-
-    self.scores.each { |score| max_score = max_score + score.question.questionnaire.max_question_score }
-
-    max_score
+    # only count the scorable questions, only when the answer is not nil (we accept nil as answer for scorable questions, and they will not be counted towards the total score)
+    total_weight = 0
+    scores.each do |s|
+      question = Question.find(s.question_id)
+      if !s.answer.nil? && question.is_a?(ScoredQuestion)
+        total_weight+=question.weight
+      end
+    end
+    if scores.empty?
+      questionnaire = questionnaire_by_answer(nil)
+    else
+      questionnaire = questionnaire_by_answer(scores.first)
+    end
+    total_weight*questionnaire.max_question_score
   end
 
   # Returns the total score from this response
@@ -224,6 +243,19 @@ class Response < ActiveRecord::Base
     end
   end
 
+  def questionnaire_by_answer (answer)
+    if !answer.nil? # for all the cases except the case that  file submission is the only question in the rubric.
+      questionnaire = Question.find(answer.question_id).questionnaire
+    else
+      # there is small possibility that the answers is empty: when the questionnaire only have 1 question and it is a upload file question
+      # the reason is that for this question type, there is no answer record, and this question is handled by a different form
+      map = ResponseMap.find(self.map_id)
+      reviewer_participant = Participant.find(map.reviewer_id)
+      assignment = Assignment.find(reviewer_participant.parent_id)
+      questionnaire = Questionnaire.find(assignment.get_review_questionnaire_id)
+    end
+    questionnaire
+  end
   require 'analytic/response_analytic'
   include ResponseAnalytic
   end

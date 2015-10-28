@@ -4,8 +4,8 @@ class PopupController < ApplicationController
     true
   end
 
+  # this can be called from "review_report" by clicking team names from instructor end.
   def team_users_popup
-    @maxscore = 0
     @sum = 0
     @count = 0
     @teamid = params[:id]
@@ -16,45 +16,29 @@ class PopupController < ApplicationController
     #  @teamname = Team.find(params[:id]).name
     @teamusers = TeamsUser.where(team_id: params[:id])
 
+    #id2 seems to be a response_map
     if(params[:id2] == nil)
       #  if(@reviewid == nil)
       @scores = nil
     else
-      @reviewid = (Response.find_by_map_id(params[:id2])).id
+      #get the last response from response_map id
+      response = Response.where(map_id:params[:id2]).last
+      @reviewid = response.id
       @pid = ResponseMap.find(params[:id2]).reviewer_id
       @reviewer_id = Participant.find(@pid).user_id
 
       @scores = Answer.where(response_id: @reviewid)
 
-      ##3
-      @revqids = AssignmentQuestionnaire.where(["assignment_id = ?",@assignment.id])
-      @revqids.each do |rqid|
-        rtype = Questionnaire.find(rqid.questionnaire_id).type
-        if( rtype == 'ReviewQuestionnaire')
-          @review_questionnaire_id = rqid.questionnaire_id
-        end
-      end
-      if(@review_questionnaire_id)
-        @review_questionnaire = Questionnaire.find(@review_questionnaire_id)
-        @maxscore = @review_questionnaire.max_question_score
-        @review_questions = @review_questionnaire.questions
-      end
-
-
-      ###
-      # @maxscore = Questionnaire.find(@assignment.review_questionnaire_id).max_question_score
+      questionnaire =Response.find(@reviewid).questionnaire_by_answer(@scores.first)
+      @maxscore = questionnaire.max_question_score
 
       if(@maxscore == nil)
         @maxscore = 5
       end
 
-      @scores.each do |s|
-        @sum = @sum + s.answer
-        @s = @sum
-        @count = @count + 1
-      end
-      @sum1 = (100*@sum.to_f )/(@maxscore.to_f * @count.to_f)
-
+      @total_percentage = response.get_average_score
+      @sum = response.get_total_score
+      @total_possible = response.get_maximum_score
     end
 
     #    @review_questionnaire = Questionnaire.find(@assignment.review_questionnaire_id)
@@ -134,6 +118,7 @@ class PopupController < ApplicationController
 
   end
 
+  # this can be called from "review_report" by clicking reviewer names from instructor end.
   def reviewer_details_popup
     @userid = Participant.find(params[:id]).user_id
     @user = User.find(@userid)

@@ -11,7 +11,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 20150827170101) do
+ActiveRecord::Schema.define(version: 20151011201717) do
 
   create_table "answers", force: :cascade do |t|
     t.integer "question_id", limit: 4,     default: 0, null: false
@@ -81,6 +81,10 @@ ActiveRecord::Schema.define(version: 20150827170101) do
     t.boolean  "show_teammate_reviews",             limit: 1
     t.boolean  "availability_flag",                 limit: 1,     default: true
     t.boolean  "use_bookmark",                      limit: 1
+<<<<<<< HEAD
+=======
+    t.boolean  "can_review_same_topic",             limit: 1,     default: true
+>>>>>>> 796036fde0a485bd233d614c090e3338b138a582
   end
 
   add_index "assignments", ["course_id"], name: "fk_assignments_courses", using: :btree

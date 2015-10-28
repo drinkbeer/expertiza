@@ -19,56 +19,7 @@
           <%end%>
         </table>
       </td>
-
-      <td>
-        <table>
-        <% qid = "ReviewResponseMap" %>
-        <% res_map_id = ResponseMap.where(["reviewee_id = ? and type = ?", @teamid, qid])
-           max = 0
-           min = 100
-           sum = 0
-           item_no = 0
-           sc = []
-           for item in res_map_id 
-             responses = Response.where(["map_id = ?", item.id])
-             sum2 = 0
-             for i in responses
-               scores = Answer.where(["response_id = ?", i.id])
-               for s in scores
-                 sum2 += s.answer
-               end
-               sum2 = sum2.to_f/30
-             end
-             item_no += 1
-             sum += sum2
-             max = sum2 if max <= sum2
-             min = sum2 if min >= sum2
-           end
-           if item_no > 0 then
-             sc << ((sum/item_no)*100).round(2)
-             sc << "#{(min* 100).round(2)}-#{(max*100).round(2)}"
-           end
-        %>
-
-        <%if sc %>
-          <% t_score= sc[0] %>
-        <%else%>
-          <%t_score = nil%>
-        <%end%>
-
-        <tr>
-          <th>Team's Average Score:</th>
-          <td>
-            <%if t_score  %>
-              <%= t_score %>%
-            <%else%>
-              --
-            <%end%>
-          </td>
-        </tr>
-
-      </table>
-    </td>
+      
   </tr>
 </table>
 
@@ -100,15 +51,19 @@
       <tr>
 
         <td align = 'left'> <%= Question.find(s.question_id).txt%></td>
-        <td align = 'center'> <%= s.answer%>/<%=@maxscore%></td>
+        <%if Question.find(s.question_id).is_a?(ScoredQuestion)%>
+          <td align = 'center'> <%= s.answer%>/<%=@maxscore%></td>
+        <%else%>
+          <td align = 'center'> <%= s.answer%></td>
+        <%end%>
         <td align = 'left'> <%= s.comments %> </td>
 
       </tr>
     <%end%>
     <tr>
-      <th>Reviewer Score</th>
-      <td align = "center"><%= @s%>/<%=@count*@maxscore%> </td>
-      <td align = "left"> = <%= sprintf("%.2f", @sum1) %>%</td>
+      <th>Reviewer Score (Σ weighted score/Σ weighted available score)</th>
+      <td align = "center"><%= @sum%>/<%=@total_possible%> </td>
+      <td align = "left"> = <%= @total_percentage.is_a?(Float)?  sprintf("%.2f", @total_percentage).to_s+"%" :@total_percentage%></td>
 
     </table>
 

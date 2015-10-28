@@ -54,7 +54,7 @@
 
     <p>
       <label for="review_comments">Additional Comments</label><BR/>
-      <textarea cols="70" rows="1" id="review_comments" name="review[comments]" style="overflow:hidden;" onkeyup="checkRows(this)">
+      <textarea cols="70" rows="1" id="review_comments" name="review[comments]" style="overflow:hidden;">
         <% if controller.action_name != 'new' and @response.additional_comment != nil %><%= @response.additional_comment.strip if !@response.nil?%>
         <% end %></textarea>
     </p>
@@ -72,7 +72,7 @@
 <!--Check whether there is a UploadFile question.-->
 <%@questions.each do |question| %>
     <% if question.instance_of? UploadFile %>
-        <%= label_tag 'UploadFile', '**Before submit you peer review files, you have to click "Save Review" button first!', style: "color:red;"%>
+        <%= label_tag 'UploadFile', '↑↑↑↑↑↑↑Before submit you peer review files, you have to click "Save Review" button first!↑↑↑↑↑↑↑', style: "color:red;"%>
         <!--params[:origin] means from where do the files upload-->
         <!--If the files uploaded from submitted_work (students hand in assignment), params[:origin] will be nil-->
         <!--If the files uploaded from peer review, params[:origin] will be 'review'-->
